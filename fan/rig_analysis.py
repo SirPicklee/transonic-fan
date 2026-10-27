@@ -49,11 +49,16 @@ def element_mass_flow(survey: dict, area: np.ndarray, slope_deg: np.ndarray) -> 
     return rho * v_axial * area
 
 
-def process(point: str) -> dict:
-    """Rotor performance from the raw surveys of one operating point."""
+def streamline_surveys(point: str):
+    """Station 1 and 2 surveys on the 9 design streamlines, and table IV."""
     sl = load_streamlines()
     s1 = _at_radii(load_survey(1, point), sl["r1"])
     s2 = _at_radii(load_survey(2, point), sl["r2"])
+    return s1, s2, sl
+
+
+def performance(s1: dict, s2: dict, sl: dict) -> dict:
+    """Rotor performance from inlet and exit surveys on the design streamlines."""
     m1 = element_mass_flow(s1, sl["area1"], sl["slope1"])
     m2 = element_mass_flow(s2, sl["area2"], sl["slope2"])
 
@@ -61,7 +66,7 @@ def process(point: str) -> dict:
     tr = s2["t0"] / s1["t0"]
     eta = (pr ** _K - 1.0) / (tr - 1.0)
 
-    w = m2 / m2.sum()                               # mass weights at the exit
+    w = m2 / m2.sum()                                     # mass weights at the exit
     tr_avg = float(np.sum(w * tr))
     pr_avg = float(np.sum(w * pr ** _K) ** (1.0 / _K))   # energy average
     eta_avg = (pr_avg ** _K - 1.0) / (tr_avg - 1.0)
@@ -73,6 +78,11 @@ def process(point: str) -> dict:
         "pressure_ratio_avg": pr_avg, "temperature_ratio_avg": tr_avg,
         "efficiency_avg": eta_avg,
     }
+
+
+def process(point: str) -> dict:
+    """Rotor performance from the raw surveys of one operating point."""
+    return performance(*streamline_surveys(point))
 
 
 if __name__ == "__main__":
