@@ -42,3 +42,30 @@ def test_section_is_centred_at_mid_chord():
     x, y = circular_arc_section(40.0, -30.0, 0.1, 0.05)["camber"]
     assert 0.5 * (x[0] + x[-1]) == pytest.approx(0.0, abs=1e-12)
     assert 0.5 * (y[0] + y[-1]) == pytest.approx(0.0, abs=1e-12)
+
+
+
+from fan.blade_sections import max_camber_position, mca_section  # noqa: E402
+
+
+def test_two_arc_camber_with_even_split_is_a_circular_arc():
+    arc = circular_arc_section(30.0, -40.0, 0.1, 0.05)
+    mca = mca_section(-55.0, -25.0, 0.1, 0.05, front_fraction=0.5)
+    for key in ("camber", "upper", "lower"):
+        assert mca[key][0] == pytest.approx(arc[key][0], abs=1e-5)
+        assert mca[key][1] == pytest.approx(arc[key][1], abs=1e-5)
+
+
+@pytest.mark.parametrize("front_fraction", [0.5, 0.25])
+def test_mca_section_matches_its_metal_angles(front_fraction):
+    x, y = mca_section(-60.0, -40.0, 0.1, 0.05, front_fraction=front_fraction,
+                       n_points=2001)["camber"]
+    k_le = math.degrees(math.atan2(y[1] - y[0], x[1] - x[0]))
+    k_te = math.degrees(math.atan2(y[-1] - y[-2], x[-1] - x[-2]))
+    assert k_le == pytest.approx(-60.0, abs=0.05)
+    assert k_te == pytest.approx(-40.0, abs=0.05)
+
+
+def test_low_front_camber_moves_maximum_camber_aft():
+    assert max_camber_position(0.5) == pytest.approx(0.5, abs=0.005)
+    assert max_camber_position(0.25) > 0.55

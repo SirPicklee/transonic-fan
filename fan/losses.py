@@ -16,10 +16,9 @@ relative dynamic head:
    With a change of radius the tangential term is written with the change
    of angular momentum, as in the diffusion factor.
 
-2. Shock loss: a normal shock at the inlet relative Mach number. This is the
-   simplest model. Miller, Lewis and Hartmann (1961) place the shock at the
-   average of the inlet and suction-surface Mach numbers, which needs the
-   blade geometry.
+2. Shock loss (shock.py): a normal shock at the inlet relative Mach number
+   ("normal"), or the Miller-Lewis-Hartmann model ("mlh"), which needs the
+   blade geometry and accounts for the expansion along the suction surface.
 
 The rotor is then followed along each streamline: rothalpy fixes the ideal
 relative total pressure at exit, the loss reduces it, and the absolute
@@ -33,25 +32,11 @@ import numpy as np
 
 from fan.annulus import Annulus
 from fan.radial_equilibrium import SpanwiseSolution, solve_exit
+from fan.shock import mlh_shock_loss, normal_shock_p0_ratio, shock_loss  # noqa: F401
 from fan.velocity_triangles import CP, GAMMA
 
 _EXP = GAMMA / (GAMMA - 1.0)
-
-
-def normal_shock_p0_ratio(mach: np.ndarray) -> np.ndarray:
-    """Total pressure ratio p02/p01 across a normal shock (1 for M <= 1)."""
-    m = np.maximum(np.asarray(mach, dtype=float), 1.0)
-    g = GAMMA
-    a = ((g + 1.0) * m ** 2 / ((g - 1.0) * m ** 2 + 2.0)) ** (g / (g - 1.0))
-    b = ((g + 1.0) / (2.0 * g * m ** 2 - (g - 1.0))) ** (1.0 / (g - 1.0))
-    return a * b
-
-
-def shock_loss(mach_rel1: np.ndarray) -> np.ndarray:
-    """Shock loss coefficient for a normal shock at the inlet relative Mach number."""
-    m = np.asarray(mach_rel1, dtype=float)
-    p_over_p0 = (1.0 + 0.5 * (GAMMA - 1.0) * m ** 2) ** (-_EXP)
-    return (1.0 - normal_shock_p0_ratio(m)) / (1.0 - p_over_p0)
+SHOCK_MODELS = ("normal", "mlh")
 
 
 def equivalent_diffusion_ratio(sol: SpanwiseSolution, solidity: np.ndarray) -> np.ndarray:
@@ -108,6 +93,11 @@ def rotor67_solidity(span: np.ndarray) -> np.ndarray:
     return chord * _Z / (2.0 * np.pi * r)
 
 
+def rotor67_thickness(span: np.ndarray) -> np.ndarray:
+    """Maximum thickness / chord: assumed 10 % at the hub to 3 % at the tip."""
+    return 0.10 + (0.03 - 0.10) * np.asarray(span)
+
+
 class HubStallError(RuntimeError):
     """The loss iteration ran away: diffusion beyond Lieblein's data range."""
 
@@ -115,7 +105,9 @@ class HubStallError(RuntimeError):
 def analyze(inlet: Annulus, exit_: Annulus, rpm: float, mass_flow: float,
             c_theta_m: float, n: float, solidity_fn=rotor67_solidity,
             p01: float = 101325.0, t01: float = 288.15, eta_start: float = 0.92,
-            relaxation: float = 0.5, tol: float = 1e-7, max_iter: int = 200):
+            relaxation: float = 0.5, tol: float = 1e-7, max_iter: int = 200,
+            shock_model: str = "normal", thickness_fn=rotor67_thickness,
+            n_blades: int = 22, front_fraction: float = 0.5):
     """Couple radial equilibrium and the loss model at fixed exit swirl (fixed work).
 
     Loss raises entropy, the entropy gradient changes the axial velocity
@@ -123,9 +115,12 @@ def analyze(inlet: Annulus, exit_: Annulus, rpm: float, mass_flow: float,
     Near the hub this feedback can run away: lower axial velocity, more
     diffusion, more loss. Lieblein's data end near D_eq = 2, beyond which the
     blade section is considered stalled; a runaway is reported as HubStallError.
+    front_fraction sets the camber line used by the MLH shock model.
 
     Returns (solution, efficiency, profile loss, shock loss), all along the span.
     """
+    if shock_model not in SHOCK_MODELS:
+        raise ValueError(f"unknown shock model {shock_model!r}, expected one of {SHOCK_MODELS}")
     eta = np.full(1, eta_start)
     d_eq = np.array([np.nan])
     for _ in range(max_iter):
@@ -137,7 +132,11 @@ def analyze(inlet: Annulus, exit_: Annulus, rpm: float, mass_flow: float,
         sigma = solidity_fn(sol.span)
         d_eq = equivalent_diffusion_ratio(sol, sigma)
         w_p = profile_loss(sol, sigma)
-        w_s = shock_loss(sol.mach_rel1())
+        if shock_model == "mlh":
+            w_s = mlh_shock_loss(sol, sigma, thickness_fn(sol.span), n_blades,
+                                 front_fraction)
+        else:
+            w_s = shock_loss(sol.mach_rel1())
         eta_new = efficiency_from_loss(sol, w_p + w_s, p01)
         if not np.all(np.isfinite(eta_new)):
             break                              # loss exceeds the available pressure

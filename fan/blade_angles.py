@@ -3,12 +3,13 @@ Blade metal angles from flow angles: incidence and Carter's deviation rule.
 
 The air does not follow the blade exactly. At the leading edge the flow
 meets the blade at an incidence angle i; at the trailing edge it leaves
-less turned than the blade, by the deviation angle delta. For circular-arc
-camber lines Carter's rule gives
+less turned than the blade, by the deviation angle delta. Carter's rule:
 
-    delta = m * theta / sqrt(sigma),   m = 0.23 + 0.002 * |kappa2| (deg),
+    delta = m * theta / sqrt(sigma),   m = 0.23 (2a/c)^2 + 0.002 |kappa2| (deg),
 
-with camber theta = kappa2 - kappa1 and solidity sigma.
+with camber theta = kappa2 - kappa1, solidity sigma and a/c the chordwise
+position of maximum camber (0.5 for a circular arc). Moving the maximum
+camber aft raises m: the blade needs more camber for the same flow turning.
 
 Sign convention (as in velocity_triangles.py): angles from axial, rotor
 relative angles negative; the rotor turns the flow towards positive angles.
@@ -19,25 +20,28 @@ relative angles negative; the rotor turns the flow towards positive angles.
 import numpy as np
 
 
-def carter_m(kappa2_deg: np.ndarray) -> np.ndarray:
-    """Carter coefficient for a circular-arc camber line (max camber at mid-chord)."""
-    return 0.23 + 0.002 * np.abs(kappa2_deg)
+def carter_m(kappa2_deg: np.ndarray, a_over_c: float = 0.5) -> np.ndarray:
+    """Carter coefficient for a camber line with maximum camber at a/c."""
+    return 0.23 * (2.0 * a_over_c) ** 2 + 0.002 * np.abs(kappa2_deg)
 
 
 def metal_angles(beta1: np.ndarray, beta2: np.ndarray, solidity: np.ndarray,
-                 incidence: float | np.ndarray = 0.0, iterations: int = 20):
+                 incidence: float | np.ndarray = 0.0, iterations: int = 20,
+                 a_over_c: float = 0.5):
     """Blade inlet and outlet metal angles [deg] for given flow angles [deg].
 
     Carter's rule is implicit (m depends on kappa2, theta on delta). For a
     fixed m it has the closed form delta = m (beta2 - kappa1) / (sqrt(sigma) - m),
-    which is iterated on m. Returns (kappa1, kappa2, camber, stagger, deviation).
+    which is iterated on m. Returns (kappa1, kappa2, camber, stagger, deviation);
+    the stagger is that of a circular arc (see blade_sections.mca_section for
+    other camber lines).
     """
     kappa1 = np.asarray(beta1, dtype=float) + incidence
     beta2 = np.asarray(beta2, dtype=float)
     root_sigma = np.sqrt(np.asarray(solidity, dtype=float))
     kappa2 = beta2.copy()
     for _ in range(iterations):
-        m = carter_m(kappa2)
+        m = carter_m(kappa2, a_over_c)
         delta = m * (beta2 - kappa1) / (root_sigma - m)
         kappa2 = beta2 + delta
     camber = kappa2 - kappa1

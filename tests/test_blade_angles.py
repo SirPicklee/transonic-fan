@@ -36,3 +36,10 @@ def test_incidence_shifts_the_inlet_metal_angle():
     k1, *_ = metal_angles(np.array([-60.0]), np.array([-40.0]), np.array([1.5]),
                           incidence=3.0)
     assert k1 == pytest.approx(-57.0)
+
+
+
+def test_carter_coefficient_grows_with_aft_maximum_camber():
+    k2 = np.array([-40.0])
+    assert carter_m(k2, 0.5) == pytest.approx(0.23 + 0.08)
+    assert carter_m(k2, 0.6) > carter_m(k2, 0.5)

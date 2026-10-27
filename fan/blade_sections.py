@@ -1,21 +1,25 @@
 """
-Blade sections: circular-arc camber line with a lens-shaped thickness.
+Blade sections: camber line with a lens-shaped thickness.
 
-Each section is built in its own chord frame and then rotated by the
-stagger angle:
+Circular-arc section (circular_arc_section): built in its own chord frame
+and rotated by the stagger angle:
 
   camber line   circular arc, direction angle phi from -theta/2 (leading
                 edge) to +theta/2 (trailing edge), radius R = c / (2 sin(theta/2))
                     x = c/2 + R sin(phi),   y = R (cos(theta/2) - cos(phi))
   thickness     t(s) = 4 t_max s (1 - s), s = x / c, laid off normal to
-                the camber line on both sides. For a thin section this is
-                the double-circular-arc (DCA) profile, a classic transonic
-                fan section. The edges are sharp; edge radii come later.
+                the camber line on both sides (double-circular-arc-like
+                for a thin section). The edges are sharp.
+
+Two-arc section (mca_section): the camber line is made of two tangent
+circular arcs, with `front_fraction` of the camber in the front part of the
+blade. Transonic fan blades put little camber ahead of the passage shock to
+limit the supersonic expansion along the suction surface (see shock.py).
+front_fraction = 0.5 gives back the circular arc.
 
 Coordinates: X axial, Y tangential (direction of blade motion), metres,
-origin at mid-chord. Direction angles from axial, so the camber line
-leaves the leading edge at kappa1 = stagger - theta/2 and the trailing
-edge at kappa2 = stagger + theta/2, as in blade_angles.py.
+origin at mid-chord. Direction angles from axial, so the camber line leaves
+the leading edge at kappa1 and the trailing edge at kappa2.
 """
 
 import math
@@ -60,6 +64,62 @@ def circular_arc_section(camber_deg: float, stagger_deg: float, chord: float,
         "camber": to_blade_frame(x, y),
         "upper": to_blade_frame(x + half * nx, y + half * ny),
         "lower": to_blade_frame(x - half * nx, y - half * ny),
+    }
+
+
+def two_arc_camber(camber_deg: float, front_fraction: float = 0.5,
+                   transition: float = 0.5, n_points: int = 101):
+    """Unit-chord camber line of two tangent circular arcs: the direction
+    angle grows linearly with arc length, by front_fraction * camber up to
+    `transition` and by the rest after it. Returns x, y and the direction
+    angle phi [rad], all in the chord frame (leading edge at the origin,
+    trailing edge at (1, 0))."""
+    theta = math.radians(camber_deg)
+    xi = np.linspace(0.0, 1.0, n_points)                     # arc length fraction
+    t_front = front_fraction * theta
+    phi = np.where(xi <= transition, t_front * xi / transition,
+                   t_front + (theta - t_front) * (xi - transition) / (1.0 - transition))
+    phi_mid = 0.5 * (phi[1:] + phi[:-1])
+    ds = 1.0 / (n_points - 1)
+    x = np.concatenate([[0.0], np.cumsum(np.cos(phi_mid) * ds)])
+    y = np.concatenate([[0.0], np.cumsum(np.sin(phi_mid) * ds)])
+    alpha = math.atan2(y[-1], x[-1])                         # chord direction
+    length = math.hypot(x[-1], y[-1])
+    ca, sa = math.cos(alpha), math.sin(alpha)
+    return (x * ca + y * sa) / length, (-x * sa + y * ca) / length, phi - alpha
+
+
+def max_camber_position(front_fraction: float, transition: float = 0.5,
+                        camber_deg: float = 10.0) -> float:
+    """Chordwise position a/c of maximum camber of the two-arc camber line."""
+    x, y, _ = two_arc_camber(camber_deg, front_fraction, transition, 401)
+    return float(x[np.argmin(y)])
+
+
+def mca_section(kappa1_deg: float, kappa2_deg: float, chord: float,
+                thickness_ratio: float, front_fraction: float = 0.5,
+                transition: float = 0.5, n_points: int = 101) -> dict:
+    """Section with a two-arc camber line, placed by its metal angles.
+
+    Returns {"camber", "upper", "lower": (X, Y), "stagger": chord angle [deg]}.
+    """
+    x, y, phi = two_arc_camber(kappa2_deg - kappa1_deg, front_fraction,
+                               transition, n_points)
+    gamma = math.radians(kappa1_deg) - phi[0]                # chord (stagger) angle
+    s = np.clip(x, 0.0, 1.0)
+    half = 2.0 * thickness_ratio * s * (1.0 - s)             # unit chord
+    nx, ny = -np.sin(phi), np.cos(phi)
+
+    def to_blade_frame(xc, yc):
+        xc, yc = (xc - 0.5) * chord, yc * chord
+        return (xc * math.cos(gamma) - yc * math.sin(gamma),
+                xc * math.sin(gamma) + yc * math.cos(gamma))
+
+    return {
+        "camber": to_blade_frame(x, y),
+        "upper": to_blade_frame(x + half * nx, y + half * ny),
+        "lower": to_blade_frame(x - half * nx, y - half * ny),
+        "stagger": math.degrees(gamma),
     }
 
 
