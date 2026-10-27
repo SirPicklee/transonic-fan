@@ -88,10 +88,22 @@ def efficiency_from_loss(sol: SpanwiseSolution, omega: np.ndarray,
     return ((p02 / p01) ** (1.0 / _EXP) - 1.0) / (sol.t02 / t01 - 1.0)
 
 
+# Rotor 67 (NASA TP-2879): solidity 3.11 at the hub, 1.29 at the tip, 22 blades.
+# Chord = sigma * 2 pi r / Z is then almost the same at hub and tip (94 and 92 mm):
+# the blade has a nearly constant chord, so the solidity falls as 1/r.
+_R_HUB_MEAN = 0.5 * (0.193 + 0.232) / 2     # mean of inlet and exit hub radius [m]
+_R_TIP_MEAN = 0.5 * (0.514 + 0.485) / 2     # mean of inlet and exit tip radius [m]
+_Z = 22
+_C_HUB = 3.11 * 2.0 * np.pi * _R_HUB_MEAN / _Z
+_C_TIP = 1.29 * 2.0 * np.pi * _R_TIP_MEAN / _Z
+
+
 def rotor67_solidity(span: np.ndarray) -> np.ndarray:
-    """Rotor 67 solidity, 3.11 at the hub to 1.29 at the tip (NASA TP-2879),
-    assumed linear in span between them."""
-    return 3.11 + (1.29 - 3.11) * span
+    """Rotor 67 solidity: chord linear between the hub and tip values implied by
+    the published solidities (3.11 and 1.29), divided by the local pitch."""
+    r = _R_HUB_MEAN + (_R_TIP_MEAN - _R_HUB_MEAN) * span
+    chord = _C_HUB + (_C_TIP - _C_HUB) * span
+    return chord * _Z / (2.0 * np.pi * r)
 
 
 class HubStallError(RuntimeError):

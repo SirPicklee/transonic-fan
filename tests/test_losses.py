@@ -75,3 +75,11 @@ def test_constant_swirl_stalls_the_hub():
     guess = design_for_pressure_ratio(INLET, EXIT, RPM, MDOT, 1.63, 0, 0.92)
     with pytest.raises(HubStallError):
         analyze(INLET, EXIT, RPM, MDOT, guess.c_theta2[0], 0)
+
+
+def test_rotor67_solidity_matches_nasa_and_has_nearly_constant_chord():
+    span = np.linspace(0.0, 1.0, 11)
+    sigma = rotor67_solidity(span)
+    assert sigma[0] == pytest.approx(3.11)
+    assert sigma[-1] == pytest.approx(1.29)
+    assert np.all(np.diff(sigma) < 0)
