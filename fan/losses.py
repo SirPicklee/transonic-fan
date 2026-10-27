@@ -19,7 +19,7 @@ relative dynamic head:
 2. Shock loss: a normal shock at the inlet relative Mach number. This is the
    simplest model. Miller, Lewis and Hartmann (1961) place the shock at the
    average of the inlet and suction-surface Mach numbers, which needs the
-   blade geometry; it will replace this estimate once the blades exist.
+   blade geometry.
 
 The rotor is then followed along each streamline: rothalpy fixes the ideal
 relative total pressure at exit, the loss reduces it, and the absolute
@@ -71,7 +71,8 @@ def profile_loss(sol: SpanwiseSolution, solidity: np.ndarray) -> np.ndarray:
 
 def efficiency_from_loss(sol: SpanwiseSolution, omega: np.ndarray,
                          p01: float = 101325.0) -> np.ndarray:
-    """Isentropic efficiency of each streamline for a given loss coefficient."""
+    """Isentropic efficiency of each streamline for a given loss coefficient.
+    A loss larger than the available relative total pressure gives NaN."""
     t01 = sol.t01
     t1 = t01 - sol.cx1 ** 2 / (2.0 * CP)
     p1 = p01 * (t1 / t01) ** _EXP
@@ -82,10 +83,11 @@ def efficiency_from_loss(sol: SpanwiseSolution, omega: np.ndarray,
     t02r = t01r + (sol.u2 ** 2 - sol.u1 ** 2) / (2.0 * CP)
     p02r = p01r * (t02r / t01r) ** _EXP - omega * (p01r - p1)
 
-    t2 = t02r - sol.w2 ** 2 / (2.0 * CP)
-    p2 = p02r * (t2 / t02r) ** _EXP
-    p02 = p2 * (sol.t02 / t2) ** _EXP
-    return ((p02 / p01) ** (1.0 / _EXP) - 1.0) / (sol.t02 / t01 - 1.0)
+    with np.errstate(invalid="ignore"):        # runaway loss: negative p02r -> NaN
+        t2 = t02r - sol.w2 ** 2 / (2.0 * CP)
+        p2 = p02r * (t2 / t02r) ** _EXP
+        p02 = p2 * (sol.t02 / t2) ** _EXP
+        return ((p02 / p01) ** (1.0 / _EXP) - 1.0) / (sol.t02 / t01 - 1.0)
 
 
 # Rotor 67 (NASA TP-2879): solidity 3.11 at the hub, 1.29 at the tip, 22 blades.
@@ -137,6 +139,8 @@ def analyze(inlet: Annulus, exit_: Annulus, rpm: float, mass_flow: float,
         w_p = profile_loss(sol, sigma)
         w_s = shock_loss(sol.mach_rel1())
         eta_new = efficiency_from_loss(sol, w_p + w_s, p01)
+        if not np.all(np.isfinite(eta_new)):
+            break                              # loss exceeds the available pressure
         if np.max(np.abs(eta_new - eta)) < tol:
             return sol, eta_new, w_p, w_s
         eta = relaxation * eta_new + (1.0 - relaxation) * eta

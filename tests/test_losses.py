@@ -71,7 +71,9 @@ def test_free_vortex_rotor67_prediction():
     assert eta[-1] < eta[len(eta) // 2]            # the tip pays for the shock
 
 
+@pytest.mark.filterwarnings("error")
 def test_constant_swirl_stalls_the_hub():
+    """The runaway is reported as HubStallError, without numerical warnings."""
     guess = design_for_pressure_ratio(INLET, EXIT, RPM, MDOT, 1.63, 0, 0.92)
     with pytest.raises(HubStallError):
         analyze(INLET, EXIT, RPM, MDOT, guess.c_theta2[0], 0)
