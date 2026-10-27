@@ -1,0 +1,10 @@
+# NASA Rotor 67 overall performance at design speed, NASA TP-2879
+# Tables III(a), III(b): orifice mass flow, energy-averaged total pressure ratio,
+# mass-averaged total temperature ratio and rotor adiabatic efficiency.
+# Table V: mass flow integrated from the surveys at stations 1 and 2.
+# Table IV: 9 design streamlines, radius [cm], annular area element [cm^2] and
+# streamline slope [deg] at stations 1 and 2 (about 1.5 % hub and 1.26 % tip
+# blockage are already taken out of the areas).
+point,orifice_flow_kg_s,pressure_ratio,temperature_ratio,efficiency,station1_flow_kg_s,station2_flow_kg_s
+peak_efficiency,34.573,1.642,1.164,0.93,35.00,35.53
+near_stall,32.305,1.728,1.188,0.901,32.75,33.20
