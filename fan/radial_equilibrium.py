@@ -13,10 +13,13 @@ follows from the Euler equation, dh0 = omega r C_theta2 (no inlet swirl), the
 entropy from an assumed rotor efficiency, and SRE then dictates how the axial
 velocity must vary along the span. Its level is set by continuity.
 
-Vortex family used here:  C_theta2(r) = C_theta_m * (r / r_m)^n
+Vortex family used in design:  C_theta2(r) = C_theta_m * (r / r_m)^n
     n = -1  free vortex      (r C_theta = const, uniform work, uniform Cx)
     n =  0  constant swirl
     n = +1  forced vortex    (work grows with r^2)
+
+solve_exit_swirl takes any swirl distribution; the off-design analysis uses
+it with a swirl that follows from the blade exit angle.
 
 Streamlines are matched between the rotor inlet and exit by equal mass
 fraction, so the annulus may contract through the rotor.
@@ -100,14 +103,14 @@ class SpanwiseSolution:
         return CP * (self.mass_average(self.t02) - self.t01)
 
 
-def solve_exit(inlet: Annulus, exit_: Annulus, rpm: float, mass_flow: float,
-               c_theta_m: float, n: float, efficiency: float,
-               p01: float = 101325.0, t01: float = 288.15,
-               n_points: int = 101, picard_iterations: int = 8) -> SpanwiseSolution:
-    """Exit flow field for the vortex C_theta2 = c_theta_m (r / r_m)^n."""
+def solve_exit_swirl(inlet: Annulus, exit_: Annulus, rpm: float, mass_flow: float,
+                     c_theta: np.ndarray, efficiency, p01: float = 101325.0,
+                     t01: float = 288.15, picard_iterations: int = 8) -> SpanwiseSolution:
+    """Exit flow field for a given exit swirl distribution, on the grid
+    r2 = linspace(hub, tip, len(c_theta))."""
     omega = rpm * 2.0 * math.pi / 60.0
-    r2 = np.linspace(exit_.r_hub, exit_.r_tip, n_points)
-    c_theta = c_theta_m * (r2 / exit_.r_mean) ** n
+    c_theta = np.asarray(c_theta, dtype=float)
+    r2 = np.linspace(exit_.r_hub, exit_.r_tip, len(c_theta))
 
     # Work, total conditions and entropy along the span (uniform inlet)
     dh0 = omega * r2 * c_theta
@@ -151,6 +154,17 @@ def solve_exit(inlet: Annulus, exit_: Annulus, rpm: float, mass_flow: float,
     return SpanwiseSolution(r1=r1, r2=r2, cx1=cx1, cx2=cx2, c_theta2=c_theta,
                             u1=omega * r1, u2=omega * r2, t01=t01, t02=t02, pr=pr,
                             mass_flow=mass_flow, rho_cx2_r=flux)
+
+
+def solve_exit(inlet: Annulus, exit_: Annulus, rpm: float, mass_flow: float,
+               c_theta_m: float, n: float, efficiency: float,
+               p01: float = 101325.0, t01: float = 288.15,
+               n_points: int = 101, picard_iterations: int = 8) -> SpanwiseSolution:
+    """Exit flow field for the vortex C_theta2 = c_theta_m (r / r_m)^n."""
+    r2 = np.linspace(exit_.r_hub, exit_.r_tip, n_points)
+    c_theta = c_theta_m * (r2 / exit_.r_mean) ** n
+    return solve_exit_swirl(inlet, exit_, rpm, mass_flow, c_theta, efficiency,
+                            p01, t01, picard_iterations)
 
 
 def _max_flow_cx(flow_error) -> float:
